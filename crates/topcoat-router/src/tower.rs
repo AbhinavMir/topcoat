@@ -202,9 +202,9 @@ where
         // rate-limit windows) through the service's internal handles.
         let service = self.service.clone();
         Box::pin(async move {
-            // Clone the parts rather than moving them off the context, so the
-            // context stays intact when the middleware responds on its own
-            // without calling the chain.
+            // Build the middleware's request from a copy of the parts, leaving
+            // the originals on the context so they stay available when the
+            // middleware responds on its own without calling the chain.
             let parts = cx
                 .get::<http::request::Parts>()
                 .expect("router context contains parts")
