@@ -202,10 +202,13 @@ where
         // rate-limit windows) through the service's internal handles.
         let service = self.service.clone();
         Box::pin(async move {
-            // Swap out existing parts with empty ones to avoid cloning headers etc.
+            // Build the middleware's request from a copy of the parts, leaving
+            // the originals on the context so they stay available when the
+            // middleware responds on its own without calling the chain.
             let parts = cx
-                .insert(http::Request::new(()).into_parts().0)
-                .expect("router context contains parts");
+                .get::<http::request::Parts>()
+                .expect("router context contains parts")
+                .clone();
             // Reassemble the http request the middleware operates on from the
             // parts stored on the context, and slip it the relay over which
             // `TowerNext` calls back into this chain.
@@ -848,6 +851,20 @@ mod tests {
         // The chain never ran, so the parts stay on the context for outer
         // layers and error rendering.
         assert!(cx.get::<Parts>().is_some());
+    }
+
+    #[test]
+    fn short_circuit_keeps_the_request_parts_on_the_context() {
+        let layer = TowerLayer::new(Path::new("/"), ShortCircuitLayer);
+        let route = RouteFn::new(Method::GET, path("/x"), say_route);
+        let mut cx = cx_for("/x?q=1");
+
+        run(&layer, &mut cx, &route).unwrap();
+
+        // Outer layers and error rendering read the request from the context
+        // after the middleware answers, so it must still hold the real parts,
+        // not placeholders.
+        assert_eq!(cx.get::<Parts>().unwrap().uri, "/x?q=1");
     }
 
     #[test]
